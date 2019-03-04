@@ -1,0 +1,31 @@
+{
+  "name": "lexer",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "test": "ava",
+    "test:watch": "ava --watch"
+  },
+  "ava": {
+    "compileEnhancements": false,
+    "files": [
+      "src/__tests__/*.test.ts"
+    ],
+    "extensions": [
+      "ts"
+    ],
+    "require": [
+      "ts-node/register"
+    ]
+  },
+  "dependencies": {
+    "ts-node": "^8.0.2",
+    "ts-node-dev": "^1.0.0-pre.32",
+    "typescript": "^3.3.3333"
+  },
+  "devDependencies": {
+    "@types/node": "^11.10.4",
+    "ava": "^1.2.1"
+  }
+}
