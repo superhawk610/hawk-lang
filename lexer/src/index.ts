@@ -4,10 +4,10 @@ import { LexerError } from './errors';
 type AST = Token[];
 
 export class Lexer {
-  private pos: number = 0;
-  private len: number = 0;
-  public input: string | null = null;
-  public tree: AST = [];
+  pos: number = 0;
+  len: number = 0;
+  input: string | null = null;
+  tree: AST = [];
 
   constructor(input?: string) {
     if (input) {
@@ -16,41 +16,46 @@ export class Lexer {
     }
   }
 
-  public setInput(input: string): void {
+  setInput(input: string): void {
     this.input = input;
     this.len = input.length;
   }
 
-  public parse(): AST {
+  parse(): AST {
     if (!this.input) throw new LexerError('No input provided');
 
     this.pos = 0;
     this.tree = [new Token(Tokens.SOF)];
+    let token = this.readToken();
+    this.tree.push(token);
 
-    do {
-      this.readToken();
-    } while (this.pos < this.len);
+    while (token.kind !== Tokens.EOF) {
+      token = this.readToken();
+      this.tree.push(token);
+    }
 
     return this.tree;
   }
 
-  private readToken(): void {
+  readToken(): Token {
     this.skipWhitespace();
+
     if (this.pos >= this.len) {
-      this.tree.push(new Token(Tokens.EOF));
-      return;
+      return new Token(Tokens.EOF);
     }
 
     const code = this.input!.charCodeAt(this.pos);
     switch (code) {
       case 61 /* = */:
-        this.tree.push(new Token(Tokens.EQUALS));
+        this.pos++;
+        return new Token(Tokens.EQUALS);
       case 59 /* ; */:
-        this.tree.push(new Token(Tokens.SEMI));
+        this.pos++;
+        return new Token(Tokens.SEMI);
       case 34 /* " */:
       case 39 /* ' */:
         this.pos++;
-        this.tree.push(this.readString());
+        return this.readString();
       case 65 /* A */:
       case 66 /* B */:
       case 67 /* C */:
@@ -104,7 +109,7 @@ export class Lexer {
       case 120 /* x */:
       case 121 /* y */:
       case 122 /* z */:
-        this.tree.push(this.readDeclarationOrName());
+        return this.readDeclarationOrName();
       case 48 /* 0 */:
       case 49 /* 1 */:
       case 50 /* 2 */:
@@ -115,16 +120,15 @@ export class Lexer {
       case 55 /* 7 */:
       case 56 /* 8 */:
       case 57 /* 9 */:
-        this.tree.push(this.readNumber());
+        return this.readNumber();
       default:
         throw new LexerError(
           `Encountered unrecognized character ${String.fromCharCode(code)}`,
         );
     }
-    console.log('read', this.tree[this.tree.length - 1]);
   }
 
-  private skipWhitespace(): void {
+  skipWhitespace(): void {
     while (this.pos < this.len) {
       const code = this.input!.charCodeAt(this.pos);
       if (
@@ -140,23 +144,24 @@ export class Lexer {
     }
   }
 
-  private readDeclarationOrName(): Token {
+  readDeclarationOrName(): Token {
     if (
       this.input!.charCodeAt(this.pos) === 108 /* l */ &&
       this.input!.charCodeAt(this.pos + 1) === 101 /* e */ &&
       this.input!.charCodeAt(this.pos + 2) === 116 /* t */
     ) {
+      this.pos += 3;
       return new Token(Tokens.DECLARATION, undefined, true);
     }
     return this.readName();
   }
 
-  private readName(): Token {
-    const start = this.pos++;
+  readName(): Token {
+    const start = this.pos;
     let code = 0;
     while (
       this.pos < this.len &&
-      (code = this.input!.charCodeAt(this.pos)) !== NaN &&
+      !isNaN((code = this.input!.charCodeAt(this.pos))) &&
       (code === 95 /* _ */ ||
       (code >= 48 && code <= 57) /* 0-9 */ ||
       (code >= 65 && code <= 90) /* A-Z */ ||
@@ -167,15 +172,68 @@ export class Lexer {
     return new Token(Tokens.NAME, this.input!.slice(start, this.pos));
   }
 
-  private readNumber(): Token {
-    return new Token(Tokens.INT, -1);
+  readNumber(): Token {
+    let prefix = this.readDigits();
+    if (this.input!.charCodeAt(this.pos) === 46 /* . */) {
+      this.pos++;
+      let postfix = this.readDigits();
+      return new Token(
+        Tokens.FLOAT,
+        // FIXME: this can probably be done better
+        parseFloat(`${prefix}.${postfix}`),
+      );
+    }
+    return new Token(Tokens.INT, parseInt(prefix, 10));
   }
 
-  private readDigits(): void {
-    // if a character is encountered, throw a LexerError(identifiers can't start with a digit)
+  readDigits(): string {
+    const start = this.pos;
+    let code = 0;
+    while (
+      this.pos < this.len &&
+      !isNaN((code = this.input!.charCodeAt(this.pos))) &&
+      (code >= 48 && code <= 57) /* 0-9 */
+    ) {
+      this.pos++;
+    }
+
+    if (
+      !(
+        code === 9 /* tab */ ||
+        code === 32 /* space */ ||
+        code === 13 /* carriage return */ ||
+        code === 10 /* newline */ ||
+        code === /* . */ 46 ||
+        code === /* ; */ 59
+      )
+    ) {
+      throw new LexerError("Identifiers can't start with a digit");
+    }
+
+    return this.input!.slice(start, this.pos);
   }
 
-  private readString(): Token {
-    return new Token(Tokens.STRING, '-1');
+  readString(): Token {
+    const start = this.pos++;
+    let code = 0;
+
+    while (
+      this.pos < this.len &&
+      !isNaN((code = this.input!.charCodeAt(this.pos))) &&
+      code !== 13 /* carriage return */ &&
+      code !== 10 /* newline */ &&
+      code !== 39 /* ' */ &&
+      code !== 34 /* " */
+    ) {
+      this.pos++;
+    }
+
+    if (code === 13 /* carriage return */ || code === 10 /* newline */) {
+      throw new LexerError(
+        'Strings cannot contain carriage returns or newlines',
+      );
+    }
+
+    return new Token(Tokens.STRING, this.input!.slice(start, this.pos++));
   }
 }
